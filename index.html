@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Question Paper Duplicate Finder</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1915;
+      --muted: #5c564c;
+      --card: #fffcf7;
+      --line: #ddd4c4;
+      --accent: #8a3b12;
+      --accent-2: #1f4d3a;
+      --warn: #8a3b12;
+      --ok: #1f4d3a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Georgia, serif;
+      background: radial-gradient(1200px 500px at 10% -10%, #efe4d2, transparent),
+                  radial-gradient(900px 400px at 100% 0%, #e4ece6, transparent),
+                  var(--bg);
+      color: var(--ink);
+    }
+    main { max-width: 980px; margin: 0 auto; padding: 40px 20px 80px; }
+    h1 { font-size: 2rem; margin: 0 0 8px; letter-spacing: -0.03em; }
+    .lede { color: var(--muted); max-width: 46rem; line-height: 1.5; margin-bottom: 28px; }
+    .drop {
+      border: 2px dashed var(--line);
+      background: var(--card);
+      border-radius: 16px;
+      padding: 36px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s, transform .15s;
+    }
+    .drop:hover, .drop.drag { border-color: var(--accent); transform: translateY(-1px); }
+    .drop strong { color: var(--accent); }
+    input[type=file] { display: none; }
+    button.run {
+      margin-top: 16px;
+      background: var(--ink);
+      color: #fff;
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 22px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    button.run:disabled { opacity: .45; cursor: not-allowed; }
+    .status { margin: 16px 0; color: var(--muted); min-height: 1.4em; }
+    .err { color: #8b1e1e; background: #f8e8e4; padding: 10px 14px; border-radius: 10px; }
+    .stats { display: flex; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
+    .stat {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+      min-width: 140px;
+    }
+    .stat b { display: block; font-size: 1.4rem; }
+    .group {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin: 12px 0;
+    }
+    .group h3 { margin: 0 0 10px; font-size: 1.05rem; }
+    .tag {
+      display: inline-block;
+      font-size: .75rem;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 999px;
+      margin-right: 8px;
+    }
+    .tag.rep { background: #f3d9cc; color: var(--warn); }
+    .tag.sim { background: #d7e6de; color: var(--ok); }
+    .q { padding: 10px 0; border-top: 1px solid var(--line); }
+    .q:first-of-type { border-top: 0; }
+    .num { font-weight: 700; color: var(--accent); }
+    .reps { font-size: .9rem; color: var(--muted); margin-top: 4px; }
+    .empty { color: var(--muted); padding: 8px 0; }
+    details.raw { margin-top: 28px; color: var(--muted); }
+    details.raw summary { cursor: pointer; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Question paper duplicate finder</h1>
+    <p class="lede">
+      Upload a Word question paper (.docx). The system reads numbered questions,
+      ignores extra spaces and filler wording, and groups <b>repeated</b> items
+      (same text or spelling mistakes) as well as <b>similar</b> items that mean the same thing in different words.
+    </p>
+    <form id="form">
+      <label class="drop" id="drop">
+        <div id="label">Drop a <strong>.docx</strong> file here, or click to choose</div>
+        <input id="file" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+      </label>
+      <button class="run" id="run" type="submit" disabled>Find repeated &amp; similar questions</button>
+    </form>
+    <div class="status" id="status"></div>
+    <div id="out"></div>
+  </main>
+  <script>
+    const file = document.getElementById("file");
+    const drop = document.getElementById("drop");
+    const run = document.getElementById("run");
+    const form = document.getElementById("form");
+    const status = document.getElementById("status");
+    const out = document.getElementById("out");
+    const label = document.getElementById("label");
+
+    function setFile(f) {
+      if (!f) return;
+      label.textContent = f.name;
+      run.disabled = false;
+    }
+    file.addEventListener("change", () => setFile(file.files[0]));
+    ["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e => {
+      e.preventDefault(); drop.classList.add("drag");
+    }));
+    ["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => {
+      e.preventDefault(); drop.classList.remove("drag");
+    }));
+    drop.addEventListener("drop", e => {
+      const f = e.dataTransfer.files[0];
+      if (f) { file.files = e.dataTransfer.files; setFile(f); }
+    });
+
+    function groupHtml(g) {
+      const tag = g.type === "repeated" ? "rep" : "sim";
+      const qs = g.questions.map(q => `
+        <div class="q">
+          <div><span class="num">Q ${q.number}</span> — ${escapeHtml(q.text)}</div>
+          <div class="reps">Repeated / matching question numbers: ${q.repeats_of.map(n => "Q " + n).join(", ")}</div>
+        </div>`).join("");
+      return `<article class="group">
+        <h3><span class="tag ${tag}">${g.label}</span> Questions ${g.question_numbers.join(", ")} · match ${g.score}%</h3>
+        ${qs}
+      </article>`;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+      }[c]));
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!file.files[0]) return;
+      status.innerHTML = "Reading the paper and comparing questions…";
+      out.innerHTML = "";
+      run.disabled = true;
+      const body = new FormData();
+      body.append("file", file.files[0]);
+      try {
+        const res = await fetch("/analyze", { method: "POST", body });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Could not analyze the file.");
+        const rep = data.repeated_groups || [];
+        const sim = data.similar_groups || [];
+        status.innerHTML = "";
+        out.innerHTML = `
+          <div class="stats">
+            <div class="stat"><b>${data.total}</b> questions found</div>
+            <div class="stat"><b>${rep.length}</b> repeated groups</div>
+            <div class="stat"><b>${sim.length}</b> similar-meaning groups</div>
+          </div>
+          <h2>Repeated questions</h2>
+          ${rep.length ? rep.map(groupHtml).join("") : '<p class="empty">No exact or spelling-duplicate questions found.</p>'}
+          <h2>Similar / reworded questions</h2>
+          ${sim.length ? sim.map(groupHtml).join("") : '<p class="empty">No reworded matches found.</p>'}
+          <details class="raw">
+            <summary>All extracted questions</summary>
+            ${(data.questions || []).map(q => `<p><b>Q ${escapeHtml(q.number)}.</b> ${escapeHtml(q.text)}</p>`).join("")}
+          </details>`;
+      } catch (err) {
+        status.innerHTML = `<div class="err">${escapeHtml(err.message)}</div>`;
+      } finally {
+        run.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

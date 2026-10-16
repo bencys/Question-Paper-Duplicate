@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.docx
+!sample_question_paper.docx
+.DS_Store
+.idea/
+.vscode/
