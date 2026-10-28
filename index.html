@@ -844,6 +844,8 @@
       margin: 2px 0;
     }
 
+    .pick { width: 18px; height: 18px; margin-top: 4px; accent-color: var(--primary); cursor: pointer; flex-shrink: 0; }
+    .pick-hint { font-size: .9rem; color: var(--ink-2); margin: 14px 2px 10px; }
     .file-tag {
       flex-shrink: 0;
       max-width: 180px;
@@ -1421,6 +1423,7 @@
         ${shortFormsHtml()}
         ${papersHtml()}
 
+        <p class="pick-hint">Tick a question to add it to the <b>New question paper</b> tab. Untick to remove it. <b>Select group</b> adds or removes a whole group.</p>
         <div class="subtabs" id="subtabs" role="tablist">
           <button class="active" data-sub="s-dup" role="tab">Duplicate questions<span class="count dup">${dup.length}</span></button>
           <button data-sub="s-sem" role="tab">Similar meaning<span class="count sem">${sim.length}</span></button>
@@ -1511,24 +1514,125 @@
       nums.forEach(n => (on ? SELECTED.add(String(n)) : SELECTED.delete(String(n))));
       updatePicker();
     }
+    /* ── Word document, built in the browser so the page works without a server ── */
+    const CRC_TABLE = (() => {
+      const t = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+        t[n] = c >>> 0;
+      }
+      return t;
+    })();
+    function crc32(bytes) {
+      let c = 0xFFFFFFFF;
+      for (const b of bytes) c = CRC_TABLE[(c ^ b) & 0xFF] ^ (c >>> 8);
+      return (c ^ 0xFFFFFFFF) >>> 0;
+    }
+    /* A zip file with the parts stored (no compression), as a .docx needs. */
+    function zipFiles(files) {
+      const enc = new TextEncoder(), parts = [], central = [];
+      let offset = 0;
+      for (const f of files) {
+        const name = enc.encode(f.name), crc = crc32(f.data), size = f.data.length;
+        const local = new DataView(new ArrayBuffer(30));
+        local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true); local.setUint16(6, 0x0800, true);
+        local.setUint32(14, crc, true); local.setUint32(18, size, true); local.setUint32(22, size, true);
+        local.setUint16(26, name.length, true);
+        parts.push(new Uint8Array(local.buffer), name, f.data);
+        const cen = new DataView(new ArrayBuffer(46));
+        cen.setUint32(0, 0x02014b50, true); cen.setUint16(4, 20, true); cen.setUint16(6, 20, true);
+        cen.setUint16(8, 0x0800, true); cen.setUint32(16, crc, true); cen.setUint32(20, size, true);
+        cen.setUint32(24, size, true); cen.setUint16(28, name.length, true); cen.setUint32(42, offset, true);
+        central.push(new Uint8Array(cen.buffer), name);
+        offset += 30 + name.length + size;
+      }
+      const cenSize = central.reduce((n, p) => n + p.length, 0);
+      const end = new DataView(new ArrayBuffer(22));
+      end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true);
+      end.setUint16(10, files.length, true); end.setUint32(12, cenSize, true); end.setUint32(16, offset, true);
+      return new Blob([...parts, ...central, new Uint8Array(end.buffer)],
+        { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    }
+    const MEDIA_EXT = { "image/png": "png", "image/jpeg": "jpeg", "image/gif": "gif" };
+    function imageSize(uri) {
+      return new Promise(resolve => {
+        const im = new Image();
+        im.onload = () => resolve([im.naturalWidth, im.naturalHeight]);
+        im.onerror = () => resolve(null);
+        im.src = uri;
+      });
+    }
+    function dataBytes(uri) {
+      const bin = atob(uri.split(",")[1]), out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    }
+    function xmlText(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+    /* Numbered questions with their pictures, tables and choices, as Word XML. */
+    async function buildDocx(title, questions) {
+      const rels = [], files = [], body = [];
+      let pics = 0;
+      const run = (text, bold) =>
+        `<w:r>${bold ? "<w:rPr><w:b/></w:rPr>" : ""}<w:t xml:space="preserve">${xmlText(text)}</w:t></w:r>`;
+      const para = (inner, indent = 0) =>
+        `<w:p>${indent ? `<w:pPr><w:ind w:left="${indent}"/></w:pPr>` : ""}${inner}</w:p>`;
+      async function picture(uri, maxCm) {
+        const kind = MEDIA_EXT[(uri.match(/^data:(image\/[a-z]+);/) || [])[1]];
+        const size = kind ? await imageSize(uri) : null;
+        if (!size) return "";
+        pics += 1;
+        const id = pics, cx = Math.round(maxCm * 360000), cy = Math.round(cx * size[1] / size[0]);
+        rels.push(`<Relationship Id="rIdImg${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image${id}.${kind}"/>`);
+        files.push({ name: `word/media/image${id}.${kind}`, data: dataBytes(uri) });
+        return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${id}" name="Picture ${id}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${id}" name="Picture ${id}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdImg${id}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+      }
+      function table(rows) {
+        const cols = Math.max(1, ...rows.map(r => r.length));
+        const borders = ["top", "left", "bottom", "right", "insideH", "insideV"]
+          .map(b => `<w:${b} w:val="single" w:sz="4" w:space="0" w:color="888888"/>`).join("");
+        const grid = "<w:gridCol/>".repeat(cols);
+        const trs = rows.map(r => `<w:tr>${Array.from({ length: cols }, (_, c) =>
+          `<w:tc><w:p>${run(r[c] || "")}</w:p></w:tc>`).join("")}</w:tr>`).join("");
+        return `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders>${borders}</w:tblBorders></w:tblPr><w:tblGrid>${grid}</w:tblGrid>${trs}</w:tbl>`;
+      }
+      body.push(para(run(title, true)));
+      for (let k = 0; k < questions.length; k++) {
+        const q = questions[k];
+        body.push(para(run(`${k + 1}. `, true) + run(q.text)));
+        for (const uri of q.images || []) body.push(para(await picture(uri, 9)));
+        for (const rows of q.tables || []) body.push(table(rows));
+        const choices = q.options || [];
+        for (let j = 0; j < choices.length; j++) {
+          body.push(para(run(choices[j]), 567));
+          for (const uri of (q.option_images || [])[j] || []) body.push(para(await picture(uri, 4), 567));
+        }
+        body.push("<w:p/>");
+      }
+      const head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+      const doc = `${head}<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body>${body.join("")}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+      const types = `${head}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="gif" ContentType="image/gif"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`;
+      const rootRels = `${head}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
+      const docRels = `${head}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.join("")}</Relationships>`;
+      const enc = new TextEncoder();
+      return zipFiles([
+        { name: "[Content_Types].xml", data: enc.encode(types) },
+        { name: "_rels/.rels", data: enc.encode(rootRels) },
+        { name: "word/document.xml", data: enc.encode(doc) },
+        { name: "word/_rels/document.xml.rels", data: enc.encode(docRels) },
+        ...files,
+      ]);
+    }
+
     async function downloadPaper(btn) {
       const picked = selectedQuestions();
       btn.disabled = true;
       try {
-        const res = await fetch("/paper", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: "New question paper",
-            questions: picked.map(q => ({
-              text: q.text, options: q.options || [], images: q.images || [],
-              option_images: q.option_images || [], tables: q.tables || [],
-            })),
-          }),
-        });
-        if (!res.ok) throw new Error("Could not build the Word document.");
+        const blob = await buildDocx("New question paper", picked);
         const a = document.createElement("a");
-        a.href = URL.createObjectURL(await res.blob());
+        a.href = URL.createObjectURL(blob);
         a.download = "new_question_paper.docx";
         a.click();
         URL.revokeObjectURL(a.href);
@@ -1539,6 +1643,7 @@
         btn.disabled = selectedQuestions().length === 0;
       }
     }
+
     outEl.addEventListener("change", e => {
       if (e.target.matches(".pick")) setPicked([e.target.dataset.id], e.target.checked);
     });

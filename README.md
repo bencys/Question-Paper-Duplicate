@@ -39,14 +39,17 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 python make_sample.py
-uvicorn app:app --reload --port 8000
+streamlit run app.py
 ```
 
-Open http://127.0.0.1:8000 and upload `sample_question_paper.docx` or your own paper.
+Open the address Streamlit prints and add `sample_question_paper.docx` or your own papers.
 
-The first analysis downloads a small sentence-meaning model (about 90 MB, once). Without
-`sentence-transformers` installed the app still works, but similar meaning is judged from
-shared words only.
+The app runs on Streamlit Community Cloud with `requirements.txt` (no heavy model). Similar meaning is
+judged from shared words. For better similarity, install `sentence-transformers` locally; the first
+analysis then downloads a small model (about 90 MB, once).
+
+The FastAPI version with its own web page is `api.py`: `pip install -r requirements-api.txt` and
+`uvicorn api:app --reload --port 8000`.
 
 Numbered items such as `1.`, `2)`, `Q.3`, and `Question 4` are detected. Multiple-choice
 options stay attached to the parent question and are never counted as questions. Options can be
@@ -65,4 +68,5 @@ options are shown with each question but are not compared.
 - `matcher.py`: duplicate and similar-meaning matching. Add short forms to `SHORT_FORMS`,
   same-meaning words to `SYNONYMS`, and tune `DUPLICATE_AT` / `SIMILAR_AT`.
 - `spelling.py`: Indian English spell checker. Add subject words to `DOMAIN_WORDS`.
-- `app.py`: FastAPI endpoint `/analyze`
+- `app.py`: Streamlit app (upload, combined analysis, results, new paper download)
+- `api.py`: FastAPI endpoint `/analyze` and its web page (`index.html`)
