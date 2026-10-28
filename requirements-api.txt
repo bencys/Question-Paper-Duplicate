@@ -1,0 +1,5 @@
+# Only for the FastAPI version (api.py): uvicorn api:app
+fastapi>=0.115
+uvicorn[standard]>=0.34
+python-multipart>=0.0.20
+jinja2>=3.1

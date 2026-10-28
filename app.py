@@ -1,51 +1,75 @@
+"""Question Paper Duplicate Finder: upload several Word papers and analyse them together.
+
+Run with: streamlit run app.py
+The results page is the same index.html used by api.py (uvicorn api:app), with its own CSS unchanged.
+"""
+
 from __future__ import annotations
 
-import tempfile
+import json
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse
+import streamlit as st
+import streamlit.components.v1 as components
 
-from extractor import extract_questions
-from matcher import find_matches
+from analysis import analyse
 
-app = FastAPI(title="Question Paper Duplicate Finder")
-MAX_BYTES = 12 * 1024 * 1024
+PAGE = (Path(__file__).with_name("index.html")).read_text(encoding="utf-8")
 
-PAGE = Path(__file__).with_name("index.html").read_text(encoding="utf-8")
+# The page's upload card needs the FastAPI server, so it is hidden here: papers are added in the
+# uploader above. Everything else on the page works in the browser.
+EMBED_CSS = "#form, #status, .hero { display: none !important; } body { min-height: 0 !important; }"
+BOOT = """
+    SELECTED.clear();
+    defaultPaperNumbers().forEach(n => SELECTED.add(n));
+    render();
+    // Make the frame exactly as tall as the page, so the page scrolls with the screen, not inside a box.
+    const fitFrame = () => {
+      try { window.frameElement.style.height = (document.documentElement.scrollHeight + 24) + "px"; } catch (e) {}
+    };
+    new ResizeObserver(fitFrame).observe(document.body);
+    fitFrame();
+"""
+
+st.set_page_config(page_title="Question Paper Duplicate Finder", layout="wide")
 
 
-@app.get("/", response_class=HTMLResponse)
-def home():
-    return PAGE
+@st.cache_data(show_spinner=False)
+def run_analysis(papers_in: tuple[tuple[str, bytes], ...]):
+    return analyse(list(papers_in))
 
 
-@app.post("/analyze")
-async def analyze(file: UploadFile = File(...)):
-    name = (file.filename or "").lower()
-    if not name.endswith(".docx"):
-        raise HTTPException(
-            status_code=400,
-            detail="Please upload a Word document (.docx). Older .doc files are not supported.",
-        )
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
-    if len(data) > MAX_BYTES:
-        raise HTTPException(status_code=400, detail="File is too large (max 12 MB).")
+def page_html(result: dict) -> str:
+    """The original results page, with this analysis loaded into it."""
+    data = json.dumps(result, ensure_ascii=False).replace("</", "<\\/")
+    html = PAGE.replace("    let DATA = null;", f"    let DATA = {data};", 1)
+    html = html.replace("</head>", f"<style>{EMBED_CSS}</style>\n</head>", 1)
+    end = html.rindex("</script>")
+    return html[:end] + BOOT + html[end:]
 
-    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
-        tmp.write(data)
-        tmp_path = Path(tmp.name)
-    try:
-        questions = extract_questions(tmp_path)
-        if not questions:
-            raise HTTPException(
-                status_code=400,
-                detail="No questions were found. Use numbered items such as 1.  2)  Q.3  Question 4.",
-            )
-        result = find_matches(questions)
-        result["filename"] = file.filename
-        return result
-    finally:
-        tmp_path.unlink(missing_ok=True)
+
+st.title("Question Paper Duplicate Finder")
+uploads = st.file_uploader("Question papers (.docx)", type=["docx"], accept_multiple_files=True,
+                           help="Add several papers. Each stays in the list until you remove it.")
+if st.button(f"Analyse {len(uploads)} paper{'s' if len(uploads) != 1 else ''} together",
+             type="primary", disabled=not uploads):
+    with st.status("Reading the papers…", expanded=True) as status:
+        st.write("Removing headings, instructions, rough work and blank pages")
+        st.write("Comparing the questions of all papers together")
+        result, problems = run_analysis(tuple((f.name, f.getvalue()) for f in uploads))
+        status.update(label="Analysis complete", state="complete", expanded=False)
+    st.session_state["analysis"] = {"result": result, "problems": problems}
+
+analysis = st.session_state.get("analysis")
+if analysis is None:
+    st.info("Add question papers, then press Analyse. Every paper is read first and then all questions "
+            "are compared together.")
+    st.stop()
+
+for problem in analysis["problems"]:
+    st.warning(problem)
+if analysis["result"] is None:
+    st.error("No questions were found in the papers.")
+    st.stop()
+
+components.html(page_html(analysis["result"]), height=900, scrolling=False)
