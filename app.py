@@ -18,8 +18,27 @@ PAGE = (Path(__file__).with_name("index.html")).read_text(encoding="utf-8")
 
 # The page's upload card needs the FastAPI server, so it is hidden here: papers are added in the
 # uploader above. Everything else on the page works in the browser.
-EMBED_CSS = "#form, #status, .hero { display: none !important; } body { min-height: 0 !important; }"
+EMBED_CSS = """
+#form, #status, .hero { display: none !important; }
+body { min-height: 0 !important; background: transparent; }
+body.dark {
+  --bg: transparent; --surface: #1d2430; --subtle: #252e3d; --line: #323d50; --line-2: #3f4b62;
+  --ink: #e8edf6; --ink-2: #c3cddd; --ink-3: #939fb4; --primary-bg: #1f2d4a; --dup-bg: #3a2323;
+  --sem-bg: #242a4a;
+}
+"""
 BOOT = """
+    // Follow Streamlit's light or dark theme, so the page blends into the app background.
+    const darkTheme = (() => {
+      try {
+        const app = window.parent.document.querySelector('[data-testid="stApp"]') || window.parent.document.body;
+        const rgb = getComputedStyle(app).backgroundColor.match(/[\d.]+/g).map(Number);
+        return 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2] < 128;
+      } catch (e) {
+        return window.matchMedia("(prefers-color-scheme: dark)").matches;
+      }
+    })();
+    document.body.classList.toggle("dark", darkTheme);
     SELECTED.clear();
     defaultPaperNumbers().forEach(n => SELECTED.add(n));
     render();

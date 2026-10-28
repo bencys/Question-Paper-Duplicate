@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import re
+import base64
+import io
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from docx import Document
+from PIL import Image
 from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
@@ -95,6 +98,7 @@ BREAK_NOISE = re.compile(
 )
 # A picture that appears this many times is a logo or watermark on every page, not a figure.
 REPEATED_PICTURE = 3
+LOGO_PIXELS = 90   # a repeated picture this small or smaller is a logo
 # A numbered line with another numbered item inside it ("1. Write neatly. 2. Attempt all") is a list of instructions.
 INLINE_ENUM = re.compile(r"\s\d+[.)]\s+[A-Za-z]")
 
@@ -222,17 +226,20 @@ def _question_table_lines(table: Table, part) -> list[Line]:
 
 DETAIL_CELL = re.compile(
     r"^(?:subject|course|class|semester|branch|department|date|time|duration|max|marks|total|"
-    r"code|q\.?\s*p\.?|paper|session|exam|roll|registration|enrol+ment|name|signature|invigilator)\b",
+    r"session|exam|roll|registration|enrol+ment|signature|invigilator)\b",
     re.IGNORECASE,
 )
 
 
 def _noise_table(rows: list[list[str]]) -> bool:
-    """A table of the paper's details (roll number, name, subject, marks, signature), not of questions."""
+    """A table of the paper's details (roll number, subject, time, marks, signature), not of questions.
+
+    A match-the-following table with a "Name" or "Code" column is kept: only the details words count.
+    """
     cells = [c.strip() for r in rows for c in r if c and c.strip()]
     if any(PAGE_NOISE.match(c) for c in cells):
         return True
-    if sum(1 for c in cells if DETAIL_CELL.match(c)) >= 2:
+    if sum(1 for c in cells if DETAIL_CELL.match(c)) >= 3:
         return True
     return any(len(c.split()) <= 4 and re.search(r"\b(?:roll|registration|signature|invigilator|candidate)\b", c, re.IGNORECASE)
                for c in cells)
@@ -261,10 +268,21 @@ def _mark_repeated(lines: list[Line]) -> list[Line]:
     return lines
 
 
+def _is_logo(uri: str) -> bool:
+    """A small picture, the size of a logo or a stamp, rather than a figure."""
+    try:
+        width, height = Image.open(io.BytesIO(base64.b64decode(uri.split(",", 1)[1]))).size
+    except Exception:
+        return False
+    return width <= LOGO_PIXELS or height <= LOGO_PIXELS
+
+
 def _drop_repeated_pictures(lines: list[Line]) -> list[Line]:
+    """Logos and stamps that appear on every page. A figure reused in several questions is kept."""
     counts = Counter(uri for line in lines for uri in line.images)
+    logos = {uri for uri, n in counts.items() if n >= REPEATED_PICTURE and _is_logo(uri)}
     for line in lines:
-        line.images = [uri for uri in line.images if counts[uri] < REPEATED_PICTURE]
+        line.images = [uri for uri in line.images if uri not in logos]
     return lines
 
 
