@@ -1,0 +1,1605 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Question Paper Duplicate Finder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap"
+    rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --surface: #ffffff;
+      --subtle: #f7f9fc;
+      --line: #e6eaf1;
+      --line-2: #d3d9e3;
+
+      --ink: #0f1a2b;
+      --ink-2: #3a4659;
+      --ink-3: #6d7889;
+
+      --navy: #14264a;
+      --primary: #2c5fd0;
+      --primary-2: #2250b4;
+      --primary-bg: #eaf1ff;
+
+      --dup: #c2352f;
+      /* same question */
+      --dup-bg: #fdecea;
+      --sem: #4a4fd0;
+      /* same meaning */
+      --sem-bg: #eeefff;
+
+      --good: #1f8a5b;
+      --mid: #b86e0a;
+      --low: #c2352f;
+
+      --spell: #d1242f;
+
+      --radius: 14px;
+      --shadow-sm: 0 1px 2px rgba(15, 26, 43, .05);
+      --shadow: 0 1px 2px rgba(15, 26, 43, .04), 0 6px 20px rgba(15, 26, 43, .06);
+      --shadow-lg: 0 2px 4px rgba(15, 26, 43, .05), 0 18px 44px rgba(15, 26, 43, .12);
+      --ease: cubic-bezier(.2, .8, .2, 1);
+
+      --sans: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+      --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+      --mono: "IBM Plex Mono", Consolas, "Courier New", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.55;
+      color: var(--ink);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    /* ── Motion ── */
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    @keyframes fade {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    @keyframes grow {
+      from {
+        transform: scaleX(0);
+      }
+
+      to {
+        transform: scaleX(1);
+      }
+    }
+
+    @keyframes shake {
+
+      0%,
+      100% {
+        transform: none;
+      }
+
+      20%,
+      60% {
+        transform: translateX(-6px);
+      }
+
+      40%,
+      80% {
+        transform: translateX(6px);
+      }
+    }
+
+    @keyframes float {
+
+      0%,
+      100% {
+        transform: translate(0, 0) scale(1);
+      }
+
+      50% {
+        transform: translate(18px, -14px) scale(1.06);
+      }
+    }
+
+    @keyframes sweep {
+      0% {
+        transform: translateX(-100%);
+      }
+
+      100% {
+        transform: translateX(340%);
+      }
+    }
+
+    @keyframes bob {
+
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+
+      50% {
+        transform: translateY(-4px);
+      }
+    }
+
+    @keyframes pulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(44, 95, 208, .35);
+      }
+
+      100% {
+        box-shadow: 0 0 0 14px rgba(44, 95, 208, 0);
+      }
+    }
+
+    @keyframes toastIn {
+      from {
+        opacity: 0;
+        transform: translate(-50%, 16px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+    }
+
+    @keyframes dots {
+
+      0%,
+      20% {
+        opacity: .2;
+      }
+
+      50% {
+        opacity: 1;
+      }
+
+      100% {
+        opacity: .2;
+      }
+    }
+
+    .rise {
+      animation: rise .55s var(--ease) both;
+      animation-delay: calc(var(--i, 0) * 70ms);
+    }
+
+    .panel:not([hidden]) {
+      animation: rise .4s var(--ease) both;
+    }
+
+    /* ── Header ── */
+    .hero {
+      position: relative;
+      overflow: hidden;
+      color: #fff;
+      background: linear-gradient(135deg, #14264a 0%, #1f3f78 60%, #2c5fd0 100%);
+    }
+
+    .hero::before,
+    .hero::after {
+      content: "";
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(40px);
+      opacity: .45;
+      pointer-events: none;
+      animation: float 14s ease-in-out infinite;
+    }
+
+    .hero::before {
+      width: 320px;
+      height: 320px;
+      right: -80px;
+      top: -120px;
+      background: #6d9cff;
+    }
+
+    .hero::after {
+      width: 260px;
+      height: 260px;
+      left: 30%;
+      bottom: -150px;
+      background: #8f7bff;
+      animation-duration: 18s;
+    }
+
+    .hero-inner {
+      position: relative;
+      z-index: 1;
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 36px 20px 40px;
+    }
+
+    .hero .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font: 600 .74rem var(--mono);
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #cfe0ff;
+      background: rgba(255, 255, 255, .1);
+      padding: 5px 11px;
+      border-radius: 99px;
+      animation: rise .5s var(--ease) both;
+    }
+
+    .hero h1 {
+      font: 700 clamp(1.6rem, 3.2vw, 2.25rem)/1.15 var(--serif);
+      letter-spacing: -.01em;
+      margin-top: 14px;
+      animation: rise .6s var(--ease) .05s both;
+    }
+
+    .hero p {
+      font-size: 1rem;
+      color: #c3d3ee;
+      margin-top: 8px;
+      max-width: 560px;
+      animation: rise .6s var(--ease) .12s both;
+    }
+
+    .page {
+      position: relative;
+      max-width: 1040px;
+      margin: -22px auto 0;
+      padding: 0 20px 96px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    /* ── Upload ── */
+    .upload {
+      display: flex;
+      gap: 14px;
+      align-items: stretch;
+      padding: 14px;
+      flex-wrap: wrap;
+      position: relative;
+      z-index: 1;
+    }
+
+    .drop {
+      flex: 1 1 320px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 18px;
+      border: 1.5px dashed var(--line-2);
+      border-radius: 12px;
+      background: var(--subtle);
+      cursor: pointer;
+      transition: border-color .2s, background .2s, transform .25s var(--ease), box-shadow .25s;
+    }
+
+    .drop:hover {
+      border-color: var(--primary);
+      background: var(--primary-bg);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .drop.drag {
+      border-color: var(--primary);
+      background: var(--primary-bg);
+      transform: scale(1.01);
+    }
+
+    .queue {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 14px 0 4px;
+    }
+
+    .queue:empty {
+      display: none;
+    }
+
+    .queue-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+      padding: 4px 6px 4px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--subtle);
+      font-size: .84rem;
+      word-break: break-all;
+    }
+
+    .queue-item button {
+      border: 0;
+      background: none;
+      cursor: pointer;
+      color: var(--ink-3);
+      font-size: 1.1rem;
+      line-height: 1;
+      padding: 0 4px;
+    }
+
+    .queue-item button:hover {
+      color: var(--primary);
+    }
+
+    .queue-note {
+      width: 100%;
+      margin: 4px 0 0;
+      font-size: .84rem;
+      color: var(--ink-3);
+    }
+
+    .drop.has-file {
+      border-style: solid;
+      border-color: #b9cdf5;
+      background: var(--primary-bg);
+    }
+
+    .drop input {
+      display: none;
+    }
+
+    .drop-icon {
+      flex-shrink: 0;
+      width: 46px;
+      height: 46px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, #2c5fd0, #5b8cf0);
+      color: #fff;
+      box-shadow: 0 6px 16px rgba(44, 95, 208, .3);
+      transition: transform .3s var(--ease);
+    }
+
+    .drop:hover .drop-icon,
+    .drop.drag .drop-icon {
+      animation: bob 1.2s ease-in-out infinite;
+    }
+
+    .drop-icon svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    .drop-title {
+      display: block;
+      font-weight: 600;
+      font-size: .95rem;
+      word-break: break-all;
+    }
+
+    .drop-sub {
+      display: block;
+      font-size: .84rem;
+      color: var(--ink-3);
+    }
+
+    .btn {
+      position: relative;
+      overflow: hidden;
+      font: 600 .92rem var(--sans);
+      padding: 0 26px;
+      min-height: 48px;
+      border-radius: 10px;
+      border: none;
+      background: linear-gradient(135deg, #2c5fd0, #3d6fe0);
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(44, 95, 208, .28);
+      transition: transform .18s var(--ease), box-shadow .2s, background .2s, opacity .2s;
+    }
+
+    .btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 24px rgba(44, 95, 208, .35);
+    }
+
+    .btn:active:not(:disabled) {
+      transform: scale(.98);
+    }
+
+    .btn:focus-visible,
+    .mini:focus-visible,
+    .subtabs button:focus-visible,
+    .drop:focus-within {
+      outline: 3px solid rgba(44, 95, 208, .35);
+      outline-offset: 2px;
+    }
+
+    .btn:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .btn-outline {
+      background: var(--surface);
+      color: var(--primary);
+      border: 1px solid var(--line-2);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-outline:hover:not(:disabled) {
+      background: var(--primary-bg);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-ready {
+      animation: pulse 1.6s ease-out 2;
+    }
+
+    .status {
+      margin-top: 14px;
+      min-height: 0;
+    }
+
+    .status .err {
+      color: var(--dup);
+      background: var(--dup-bg);
+      border: 1px solid #f4c9c6;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: .9rem;
+      animation: shake .5s var(--ease), rise .3s var(--ease) both;
+    }
+
+    /* ── Loading ── */
+    .loading {
+      margin-top: 22px;
+      padding: 44px 24px;
+      text-align: center;
+      animation: rise .4s var(--ease) both;
+    }
+
+    .scan {
+      position: relative;
+      width: min(260px, 70%);
+      height: 6px;
+      margin: 0 auto;
+      border-radius: 99px;
+      background: var(--line);
+      overflow: hidden;
+    }
+
+    .scan i {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 30%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, transparent, #2c5fd0, #7aa2ff, transparent);
+      animation: sweep 1.4s var(--ease) infinite;
+    }
+
+    .loading-text {
+      margin-top: 18px;
+      font-size: .95rem;
+      color: var(--ink-2);
+      font-weight: 500;
+      animation: fade .4s var(--ease);
+    }
+
+    .loading-text::after {
+      content: "...";
+      display: inline-block;
+      width: 1.2em;
+      text-align: left;
+      animation: dots 1.4s infinite;
+    }
+
+    /* ── Summary ── */
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 22px;
+    }
+
+    .stat {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 18px 20px;
+      transition: transform .25s var(--ease), box-shadow .25s;
+    }
+
+    .stat:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .stat-icon {
+      flex-shrink: 0;
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: var(--primary-bg);
+      color: var(--primary);
+    }
+
+    .stat-icon svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .stat.dup .stat-icon {
+      background: var(--dup-bg);
+      color: var(--dup);
+    }
+
+    .stat.sem .stat-icon {
+      background: var(--sem-bg);
+      color: var(--sem);
+    }
+
+    .stat .num {
+      font: 700 1.7rem/1.1 var(--sans);
+      letter-spacing: -.02em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stat.dup .num {
+      color: var(--dup);
+    }
+
+    .stat.sem .num {
+      color: var(--sem);
+    }
+
+    .stat .lbl {
+      font-size: .8rem;
+      color: var(--ink-3);
+      font-weight: 500;
+      margin-top: 2px;
+    }
+
+    @media (max-width: 620px) {
+      .summary {
+        grid-template-columns: 1fr;
+      }
+
+      .stat {
+        padding: 14px 16px;
+      }
+    }
+
+    /* ── Notices and chips ── */
+    .notice {
+      margin-top: 14px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: .88rem;
+      color: #7a4b06;
+      background: #fff6e6;
+      border: 1px solid #f6dfb0;
+      animation: rise .5s var(--ease) both;
+    }
+
+    .notice code {
+      font: 500 .82rem var(--mono);
+      background: rgba(184, 110, 10, .1);
+      padding: 1px 6px;
+      border-radius: 5px;
+    }
+
+    .short-forms {
+      margin-top: 14px;
+      padding: 14px 18px;
+      font-size: .86rem;
+      color: var(--ink-2);
+      animation: rise .5s var(--ease) .1s both;
+    }
+
+    .short-forms>span:first-child {
+      font-weight: 600;
+      color: var(--ink);
+      margin-right: 4px;
+    }
+
+    .short-forms b {
+      font: 600 .78rem var(--mono);
+      color: var(--primary);
+    }
+
+    .short-forms .sf {
+      display: inline-block;
+      margin: 4px 6px 0 0;
+      padding: 2px 10px;
+      border-radius: 99px;
+      background: var(--subtle);
+      border: 1px solid var(--line);
+    }
+
+    .short-forms .learned {
+      font-size: .72rem;
+      color: var(--ink-3);
+    }
+
+    /* ── Segmented tabs ── */
+    .subtabs {
+      display: inline-flex;
+      gap: 4px;
+      padding: 4px;
+      margin: 26px 0 18px;
+      background: #e9eef6;
+      border-radius: 12px;
+      max-width: 100%;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .subtabs button {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+      font: 500 .88rem var(--sans);
+      color: var(--ink-3);
+      padding: 8px 14px;
+      border: none;
+      background: transparent;
+      border-radius: 9px;
+      cursor: pointer;
+      transition: background .25s, color .25s, box-shadow .25s;
+    }
+
+    .subtabs button:hover:not(.active) {
+      color: var(--ink-2);
+      background: rgba(255, 255, 255, .55);
+    }
+
+    .subtabs button.active {
+      background: var(--surface);
+      color: var(--ink);
+      font-weight: 600;
+      box-shadow: var(--shadow);
+    }
+
+    .count {
+      display: inline-block;
+      min-width: 22px;
+      padding: 0 7px;
+      margin-left: 4px;
+      font: 600 .72rem/1.7 var(--mono);
+      text-align: center;
+      border-radius: 99px;
+      background: #e3e8f1;
+      color: var(--ink-2);
+      transition: transform .3s var(--ease);
+    }
+
+    .subtabs button.active .count {
+      transform: scale(1.08);
+    }
+
+    .count.bump {
+      animation: bump .45s var(--ease);
+    }
+
+    @keyframes bump {
+      0% {
+        transform: scale(1.35);
+      }
+
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    .count.dup {
+      background: var(--dup-bg);
+      color: var(--dup);
+    }
+
+    .count.sem {
+      background: var(--sem-bg);
+      color: var(--sem);
+    }
+
+    /* ── Group card ── */
+    .group {
+      margin-bottom: 16px;
+      overflow: hidden;
+      position: relative;
+      animation: rise .55s var(--ease) both;
+      animation-delay: calc(var(--i, 0) * 70ms);
+      transition: box-shadow .25s, transform .25s var(--ease);
+    }
+
+    .group:hover {
+      box-shadow: var(--shadow-lg);
+      transform: translateY(-1px);
+    }
+
+    .group::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+    }
+
+    .group.dup::before {
+      background: linear-gradient(180deg, #e25b52, var(--dup));
+    }
+
+    .group.sem::before {
+      background: linear-gradient(180deg, #7b80ea, var(--sem));
+    }
+
+    .group-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 12px 18px 12px 22px;
+      background: var(--subtle);
+      border-bottom: 1px solid var(--line);
+      font-size: .86rem;
+      font-weight: 600;
+      color: var(--ink-2);
+    }
+
+    .group-head .score {
+      margin-left: auto;
+    }
+
+    .q-list {
+      padding: 4px 18px;
+    }
+
+    .q-item {
+      display: flex;
+      gap: 12px;
+      padding: 12px 8px;
+      margin: 0 -8px;
+      border-radius: 10px;
+      border-bottom: 1px solid var(--line);
+      transition: background .2s;
+    }
+
+    .q-item:hover {
+      background: var(--subtle);
+    }
+
+    .q-item:last-child {
+      border-bottom: none;
+    }
+
+    .q-no {
+      flex-shrink: 0;
+      min-width: 44px;
+      height: 24px;
+      padding: 0 8px;
+      margin-top: 1px;
+      display: inline-grid;
+      place-items: center;
+      font: 600 .74rem var(--mono);
+      color: var(--primary);
+      background: var(--primary-bg);
+      border-radius: 7px;
+    }
+
+    .papers details {
+      margin-top: 8px;
+    }
+
+    .papers summary {
+      cursor: pointer;
+    }
+
+    .papers li {
+      font-size: .82rem;
+      color: var(--ink-3);
+      margin: 2px 0;
+    }
+
+    .file-tag {
+      flex-shrink: 0;
+      max-width: 180px;
+      height: 24px;
+      margin-top: 1px;
+      padding: 0 8px;
+      display: inline-grid;
+      align-items: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font: .72rem var(--mono);
+      color: var(--ink-3);
+      background: var(--subtle);
+      border-radius: 7px;
+    }
+
+    .q-body {
+      font-size: .95rem;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .opts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 18px;
+      margin-top: 6px;
+      font-size: .84rem;
+      color: var(--ink-3);
+    }
+
+    .pairs {
+      border-top: 1px solid var(--line);
+      padding: 10px 18px 14px 22px;
+      background: #fcfdfe;
+    }
+
+    .pair {
+      display: grid;
+      grid-template-columns: 112px 1fr 200px 58px;
+      gap: 12px;
+      align-items: center;
+      padding: 6px 0;
+    }
+
+    .pair-q {
+      font: 500 .78rem var(--mono);
+      color: var(--ink-2);
+    }
+
+    .bar {
+      height: 7px;
+      background: #e9eef6;
+      border-radius: 99px;
+      overflow: hidden;
+    }
+
+    .bar i {
+      display: block;
+      height: 100%;
+      border-radius: 99px;
+      transform-origin: left center;
+      animation: grow .9s var(--ease) both;
+      animation-delay: .25s;
+    }
+
+    .score {
+      font: 600 .8rem var(--mono);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .hi {
+      color: var(--good);
+    }
+
+    .bar .hi,
+    .bar i.hi {
+      background: linear-gradient(90deg, #3fb37c, var(--good));
+    }
+
+    .md {
+      color: var(--mid);
+    }
+
+    .bar .md,
+    .bar i.md {
+      background: linear-gradient(90deg, #e9a449, var(--mid));
+    }
+
+    .lo {
+      color: var(--low);
+    }
+
+    .bar .lo,
+    .bar i.lo {
+      background: linear-gradient(90deg, #e46a63, var(--low));
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .tag {
+      font: 500 .72rem var(--sans);
+      color: var(--ink-2);
+      padding: 1px 8px;
+      line-height: 1.7;
+      border-radius: 99px;
+      background: #e9eef6;
+    }
+
+    mark.sp {
+      background: none;
+      color: inherit;
+      text-decoration: underline wavy var(--spell);
+      text-decoration-thickness: 1.2px;
+      text-underline-offset: 3px;
+    }
+
+    /* ── Pictures and tables ── */
+    .fig {
+      display: block;
+      max-width: 100%;
+      max-height: 260px;
+      margin: 10px 0;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      padding: 6px;
+    }
+
+    .fig.small {
+      display: inline-block;
+      max-height: 90px;
+      margin: 0 0 0 6px;
+      padding: 3px;
+      vertical-align: middle;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      margin: 10px 0;
+      max-width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+    }
+
+    .qtable {
+      border-collapse: collapse;
+      font-size: .88rem;
+      background: #fff;
+      width: 100%;
+    }
+
+    .qtable td {
+      border-bottom: 1px solid var(--line);
+      padding: 6px 12px;
+      vertical-align: top;
+    }
+
+    .qtable tr:last-child td {
+      border-bottom: none;
+    }
+
+    .qtable tr:first-child td {
+      background: var(--subtle);
+      font-weight: 600;
+    }
+
+    /* ── Buttons on a card ── */
+    .mini {
+      font: 600 .76rem var(--sans);
+      color: var(--primary);
+      background: var(--surface);
+      border: 1px solid var(--line-2);
+      border-radius: 8px;
+      padding: 4px 11px;
+      cursor: pointer;
+      transition: background .2s, transform .15s var(--ease), border-color .2s;
+    }
+
+    .mini:hover {
+      background: var(--primary-bg);
+      border-color: #b9cdf5;
+    }
+
+    .mini:active {
+      transform: scale(.96);
+    }
+
+    .pick {
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      margin-top: 4px;
+      accent-color: var(--primary);
+      cursor: pointer;
+      transition: transform .2s var(--ease);
+    }
+
+    .pick:active {
+      transform: scale(.85);
+    }
+
+    /* ── Question picker and paper ── */
+    .all-list {
+      padding: 4px 18px;
+    }
+
+    .paper-bar {
+      position: sticky;
+      top: 12px;
+      z-index: 5;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 14px;
+      padding: 12px 16px;
+      margin: 0 0 14px;
+      background: rgba(255, 255, 255, .92);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .paper-bar .grow {
+      flex: 1 1 auto;
+    }
+
+    .paper-bar .count-txt {
+      font-weight: 600;
+      font-size: .92rem;
+    }
+
+    .paper-bar .btn {
+      min-height: 38px;
+      padding: 0 16px;
+      font-size: .86rem;
+    }
+
+    .empty {
+      padding: 36px 24px;
+      text-align: center;
+      color: var(--ink-3);
+      font-size: .92rem;
+      animation: rise .5s var(--ease) both;
+    }
+
+    .empty-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 12px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--primary-bg);
+      color: var(--primary);
+      animation: bob 3s ease-in-out infinite;
+    }
+
+    .empty-icon svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      z-index: 50;
+      padding: 12px 18px;
+      border-radius: 10px;
+      font-size: .9rem;
+      color: #fff;
+      background: var(--navy);
+      box-shadow: var(--shadow-lg);
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 16px);
+      transition: opacity .3s, transform .3s var(--ease);
+      max-width: calc(100vw - 32px);
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translate(-50%, 0);
+      animation: toastIn .35s var(--ease);
+    }
+
+    .toast.error {
+      background: var(--dup);
+    }
+
+    /* ── Small screens ── */
+    @media (max-width: 620px) {
+      .hero-inner {
+        padding: 28px 18px 34px;
+      }
+
+      .page {
+        padding: 0 14px 80px;
+      }
+
+      .pair {
+        grid-template-columns: 1fr 52px;
+      }
+
+      .pair .bar,
+      .pair .tags {
+        grid-column: 1 / -1;
+      }
+
+      .paper-bar .btn {
+        flex: 1 1 auto;
+      }
+
+      .paper-bar .grow {
+        display: none;
+      }
+    }
+
+    /* ── Reduced motion ── */
+    @media (prefers-reduced-motion: reduce) {
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: .001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <span class="kicker">Question paper tools</span>
+      <h1>Question Paper Duplicate Finder</h1>
+      <p>Upload a Word paper and see repeated questions, questions with the same meaning, and the pictures and tables
+        that go with them.</p>
+    </div>
+  </header>
+
+  <main class="page">
+    <form id="form" class="card upload">
+      <label class="drop" id="drop" for="file">
+        <span class="drop-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M12 16V4" />
+            <path d="m7 9 5-5 5 5" />
+            <path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
+          </svg>
+        </span>
+        <span>
+          <span class="drop-title" id="drop-title">Choose question papers</span>
+          <span class="drop-sub" id="drop-sub">Drag .docx files here or click to browse · add several papers to compare
+            them</span>
+        </span>
+        <input id="file" type="file" multiple
+          accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+      </label>
+      <div class="queue" id="queue"></div>
+      <button class="btn" id="run" type="submit" disabled>Analyze paper</button>
+    </form>
+    <div class="status" id="status"></div>
+
+    <div id="out"></div>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const fileInput = document.getElementById("file");
+    const drop = document.getElementById("drop");
+    const runBtn = document.getElementById("run");
+    const form = document.getElementById("form");
+    const statusEl = document.getElementById("status");
+    const outEl = document.getElementById("out");
+    const toastEl = document.getElementById("toast");
+
+    let DATA = null;
+    const SELECTED = new Set();   // question numbers in the new paper
+    let loadingTimer = null;
+    let toastTimer = null;
+    const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    /* ── File pick ── */
+    /* ── Papers waiting for analysis: each pick or drop adds to the list ── */
+    const PENDING = [];
+    const queueEl = document.getElementById("queue");
+
+    function sameFile(a, b) {
+      return a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
+    }
+    function addFiles(list) {
+      const fresh = Array.from(list).filter(f => !PENDING.some(p => sameFile(p, f)));
+      PENDING.push(...fresh);
+      fileInput.value = "";   // so picking the same file again still fires a change
+      renderQueue();
+      if (fresh.length) toast(`${fresh.length} added`);
+      else if (list.length) toast("Already in the list");
+    }
+    function removeFile(i) {
+      PENDING.splice(i, 1);
+      renderQueue();
+    }
+    function renderQueue() {
+      const n = PENDING.length;
+      drop.classList.toggle("has-file", n > 0);
+      document.getElementById("drop-title").textContent = n ? "Add more papers" : "Choose question papers";
+      document.getElementById("drop-sub").textContent =
+        "Drag .docx files here or click to browse · each pick adds to the list";
+      queueEl.innerHTML = PENDING.map((f, i) => `
+        <span class="queue-item" title="${esc(f.name)}">${esc(f.name)}
+          <button type="button" data-remove="${i}" aria-label="Remove ${esc(f.name)}">×</button></span>`).join("")
+        + (n ? `<p class="queue-note">${n} paper${n === 1 ? "" : "s"} ready · all are analysed together</p>` : "");
+      runBtn.disabled = n === 0;
+      runBtn.textContent = n > 1 ? `Analyze ${n} papers together` : "Analyze paper";
+      runBtn.classList.remove("btn-ready");
+      void runBtn.offsetWidth;   // restart the pulse
+      if (n) runBtn.classList.add("btn-ready");
+    }
+    queueEl.addEventListener("click", e => {
+      const b = e.target.closest("[data-remove]");
+      if (b) removeFile(Number(b.dataset.remove));
+    });
+    fileInput.addEventListener("change", () => addFiles(fileInput.files));
+    ["dragenter", "dragover"].forEach(ev =>
+      drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("drag"); }));
+    ["dragleave", "drop"].forEach(ev =>
+      drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("drag"); }));
+    drop.addEventListener("drop", e => {
+      if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+    });
+    renderQueue();
+
+    /* ── Helpers ── */
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, c =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+    function band(pct) { return pct >= 85 ? "hi" : pct >= 65 ? "md" : "lo"; }
+
+    function toast(message, kind = "") {
+      toastEl.textContent = message;
+      toastEl.className = `toast show ${kind}`;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove("show"), 3200);
+    }
+
+    /* Count a number up from zero, so the summary feels alive. */
+    function countUp(el) {
+      const target = Number(el.dataset.count) || 0;
+      if (REDUCED || target === 0) { el.textContent = target; return; }
+      const start = performance.now(), dur = 700;
+      const step = now => {
+        const t = Math.min(1, (now - start) / dur);
+        el.textContent = Math.round(target * (1 - Math.pow(1 - t, 3)));
+        if (t < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
+
+    /* A question's paper, shown only when more than one paper is analysed. */
+    function sourceTagHtml(q) {
+      return DATA.papers.length > 1 ? `<span class="file-tag" title="${esc(q.source)}">${esc(q.source)}</span>` : "";
+    }
+    function qLabel(num, source) {
+      return "Q" + esc(num) + (DATA.papers.length > 1 && source ? ` · ${esc(source)}` : "");
+    }
+    function papersHtml() {
+      return `<div class="card short-forms papers"><span>Papers analysed</span>
+        ${DATA.papers.map(p => `<details class="removed">
+          <summary><b>${esc(p.file)}</b> · ${p.questions} questions · ${p.removed.length} removed</summary>
+          ${p.removed.length ? `<ul>${p.removed.map(r => `<li>${esc(r)}</li>`).join("")}</ul>` : "<p>Nothing removed.</p>"}
+        </details>`).join("")}</div>`;
+    }
+
+    /* Underline misspelled words: dictionary typos plus the misspelled side of a matched pair. */
+    function highlight(text, num, variantWords) {
+      const bad = new Set(((DATA.spelling || {})[String(num)] || []).map(i => i.word.toLowerCase()));
+      (variantWords || []).forEach(w => bad.add(w.toLowerCase()));
+      return String(text).split(/([A-Za-z][A-Za-z'’]*)/).map(part =>
+        /^[A-Za-z]/.test(part) && bad.has(part.toLowerCase())
+          ? `<mark class="sp">${esc(part)}</mark>` : esc(part)
+      ).join("");
+    }
+    function optionsHtml(opts, optionImages) {
+      return opts && opts.length
+        ? `<div class="opts">${opts.map((o, k) => `<span>${esc(o)}${((optionImages || [])[k] || []).map(src => `<img class="fig small" src="${src}" alt="" />`).join("")
+          }</span>`).join("")}</div>` : "";
+    }
+    /* Pictures and tables that belong to the question stem. */
+    function figuresHtml(q) {
+      const pictures = (q.images || []).map(src => `<img class="fig" src="${src}" alt="" />`).join("");
+      const tables = (q.tables || []).map(rows => `
+        <div class="table-wrap"><table class="qtable">${rows.map(r =>
+        `<tr>${r.map(c => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</table></div>`).join("");
+      return pictures + tables;
+    }
+
+    const ICON = {
+      check: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
+      copy: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`,
+      pair: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7h11"/><path d="m16 3 3 4-3 4"/><path d="M16 17H5"/><path d="m8 13-3 4 3 4"/></svg>`,
+      list: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>`,
+      spark: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></svg>`,
+    };
+
+    /* ── Groups ── */
+    const KIND_LABEL = { duplicate: "Duplicate", similar: "Similar" };
+    function groupHtml(g, idx) {
+      const qs = g.questions.map(q => `
+        <div class="q-item">
+          <input type="checkbox" class="pick" data-id="${q.id}" ${SELECTED.has(String(q.id)) ? "checked" : ""} />
+          <span class="q-no">Q${esc(q.number)}</span>${sourceTagHtml(q)}
+          <div class="q-body">${highlight(q.text, q.id, q.variant_words)}${figuresHtml(q)}${optionsHtml(q.options, q.option_images)}</div>
+        </div>`).join("");
+      const pairs = g.pairs.map(p => {
+        const b = band(p.score);
+        const tags = [g.type === "similar" ? KIND_LABEL[p.kind] : null, ...p.reasons]
+          .filter(Boolean).map(r => `<span class="tag">${esc(r)}</span>`).join("");
+        return `
+          <div class="pair">
+            <span class="pair-q">${qLabel(p.a, p.a_source)} ↔ ${qLabel(p.b, p.b_source)}</span>
+            <div class="bar"><i class="${b}" style="width:${p.score}%"></i></div>
+            <span class="tags">${tags}</span>
+            <span class="score ${b}">${p.score}%</span>
+          </div>`;
+      }).join("");
+      return `
+        <section class="card group ${g.type === "duplicate" ? "dup" : "sem"}" style="--i:${Math.min(idx, 8)}">
+          <div class="group-head">
+            <span>${g.questions.map(q => qLabel(q.number, q.source)).join(", ")}</span>
+            <button class="mini" type="button" data-type="${g.type}" data-group-idx="${idx}">Select group</button>
+            <span class="score ${band(g.score)}">${g.score}%</span>
+          </div>
+          <div class="q-list">${qs}</div>
+          <div class="pairs">${pairs}</div>
+        </section>`;
+    }
+    function emptyHtml(msg, icon = ICON.check) {
+      return `<div class="card empty"><div class="empty-icon">${icon}</div>${msg}</div>`;
+    }
+    function groupsHtml(groups, emptyMsg) {
+      return groups.length ? groups.map(groupHtml).join("") : emptyHtml(emptyMsg);
+    }
+    function shortFormsHtml() {
+      if (!DATA.short_forms.length) return "";
+      return `<div class="card short-forms"><span>Short forms understood</span>
+        ${DATA.short_forms.map(f => `<span class="sf"><b>${esc(f.short)}</b> = ${esc(f.full)}${f.learned ? ' <span class="learned">(from this paper)</span>' : ""}</span>`).join("")}</div>`;
+    }
+
+    /* ── Render ── */
+    function render() {
+      const dup = DATA.duplicate_groups, sim = DATA.similar_groups;
+      outEl.innerHTML = `
+        <div class="summary">
+          <div class="card stat rise" style="--i:0"><div class="stat-icon">${ICON.list}</div>
+            <div><div class="num" data-count="${DATA.total}">${DATA.total}</div><div class="lbl">Questions</div></div></div>
+          <div class="card stat dup rise" style="--i:1"><div class="stat-icon">${ICON.copy}</div>
+            <div><div class="num" data-count="${dup.length}">${dup.length}</div><div class="lbl">Duplicate groups</div></div></div>
+          <div class="card stat sem rise" style="--i:2"><div class="stat-icon">${ICON.pair}</div>
+            <div><div class="num" data-count="${sim.length}">${sim.length}</div><div class="lbl">Similar-meaning groups</div></div></div>
+        </div>
+        ${DATA.meaning_model ? "" : '<div class="notice">Meaning model not installed: similar questions are found from shared words only. Run <code>pip install sentence-transformers</code> for better results.</div>'}
+        ${shortFormsHtml()}
+        ${papersHtml()}
+
+        <div class="subtabs" id="subtabs" role="tablist">
+          <button class="active" data-sub="s-dup" role="tab">Duplicate questions<span class="count dup">${dup.length}</span></button>
+          <button data-sub="s-sem" role="tab">Similar meaning<span class="count sem">${sim.length}</span></button>
+          <button data-sub="s-all" role="tab">All questions<span class="count">${DATA.total}</span></button>
+          <button data-sub="s-paper" role="tab">New question paper<span class="count" id="paper-count">${SELECTED.size}</span></button>
+        </div>
+        <div id="s-dup" class="panel">${groupsHtml(dup, "No duplicate questions found. Nothing is repeated.")}</div>
+        <div id="s-sem" class="panel" hidden>${groupsHtml(sim, "No similar-meaning questions found.")}</div>
+        <div id="s-all" class="card all-list panel" hidden>${allHtml()}</div>
+        <div id="s-paper" class="panel" hidden></div>`;
+
+      document.getElementById("subtabs").addEventListener("click", e => {
+        const btn = e.target.closest("button");
+        if (!btn) return;
+        document.querySelectorAll("#subtabs button").forEach(b => b.classList.toggle("active", b === btn));
+        ["s-dup", "s-sem", "s-all", "s-paper"].forEach(id => {
+          document.getElementById(id).hidden = id !== btn.dataset.sub;
+        });
+      });
+      outEl.querySelectorAll("[data-count]").forEach(countUp);
+      updatePicker();
+    }
+
+    /* ── Picking questions ── */
+    function allHtml() {
+      return DATA.questions.map((q, i) => `
+        <div class="q-item rise" style="--i:${Math.min(i, 12)}">
+          <input type="checkbox" class="pick" data-id="${q.id}" ${SELECTED.has(String(q.id)) ? "checked" : ""} />
+          <span class="q-no">Q${esc(q.number)}</span>${sourceTagHtml(q)}
+          <div class="q-body">${highlight(q.text, q.id, [])}${figuresHtml(q)}${optionsHtml(q.options, q.option_images)}</div>
+        </div>`).join("");
+    }
+    function groupMembers(type, idx) {
+      const g = (type === "duplicate" ? DATA.duplicate_groups : DATA.similar_groups)[idx];
+      return g.member_index.map(String);
+    }
+    /* Questions in the new paper, in paper order. */
+    function selectedQuestions() {
+      return DATA.questions.filter(q => SELECTED.has(String(q.id)));
+    }
+    /* One question per meaning cluster (a similar-meaning group, or a duplicate group with no
+       similar partner), plus every question that matches nothing. The user adds the rest. */
+    function defaultPaperNumbers() {
+      const clusters = DATA.similar_groups.map(g => g.member_index.map(String));
+      const inSimilar = new Set(clusters.flat());
+      DATA.duplicate_groups.forEach(g => {
+        const nums = g.member_index.map(String);
+        if (!nums.some(n => inSimilar.has(n))) clusters.push(nums);
+      });
+      const grouped = new Set(clusters.flat());
+      const picks = clusters.map(c => c[0]);
+      DATA.questions.forEach(q => { if (!grouped.has(String(q.id))) picks.push(String(q.id)); });
+      return picks;
+    }
+    function resetToUnique() {
+      SELECTED.clear();
+      defaultPaperNumbers().forEach(n => SELECTED.add(n));
+      updatePicker();
+      toast("Reset to one question per topic");
+    }
+    function updatePicker() {
+      document.querySelectorAll(".pick").forEach(cb => { cb.checked = SELECTED.has(cb.dataset.id); });
+      renderPaper();
+    }
+    function renderPaper() {
+      const picked = selectedQuestions();
+      const countEl = document.getElementById("paper-count");
+      countEl.textContent = picked.length;
+      countEl.classList.remove("bump");
+      void countEl.offsetWidth;
+      countEl.classList.add("bump");
+      document.getElementById("s-paper").innerHTML = `
+        <div class="card paper-bar">
+          <span class="count-txt">${picked.length} question${picked.length === 1 ? "" : "s"} in the new paper</span>
+          <span class="grow"></span>
+          <button class="btn btn-outline" id="reset-btn" type="button">Reset to unique questions</button>
+          <button class="btn" id="docx-btn" type="button" ${picked.length ? "" : "disabled"}>Download Word (.docx)</button>
+        </div>
+        <div class="card all-list">${picked.length ? picked.map((q, i) => `
+          <div class="q-item rise" style="--i:${Math.min(i, 12)}">
+            <input type="checkbox" class="pick" data-id="${q.id}" checked />
+            <span class="q-no">Q${esc(q.number)}</span>${sourceTagHtml(q)}
+            <div class="q-body">${highlight(q.text, q.id, [])}${figuresHtml(q)}${optionsHtml(q.options, q.option_images)}</div>
+          </div>`).join("") : emptyHtml("No questions in the paper yet. Tick questions in the other tabs to start.", ICON.spark)}
+        </div>`;
+    }
+    function setPicked(nums, on) {
+      nums.forEach(n => (on ? SELECTED.add(String(n)) : SELECTED.delete(String(n))));
+      updatePicker();
+    }
+    async function downloadPaper(btn) {
+      const picked = selectedQuestions();
+      btn.disabled = true;
+      try {
+        const res = await fetch("/paper", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: "New question paper",
+            questions: picked.map(q => ({
+              text: q.text, options: q.options || [], images: q.images || [],
+              option_images: q.option_images || [], tables: q.tables || [],
+            })),
+          }),
+        });
+        if (!res.ok) throw new Error("Could not build the Word document.");
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(await res.blob());
+        a.download = "new_question_paper.docx";
+        a.click();
+        URL.revokeObjectURL(a.href);
+        toast("Your Word paper is downloading");
+      } catch (err) {
+        toast(err.message, "error");
+      } finally {
+        btn.disabled = selectedQuestions().length === 0;
+      }
+    }
+    outEl.addEventListener("change", e => {
+      if (e.target.matches(".pick")) setPicked([e.target.dataset.id], e.target.checked);
+    });
+    outEl.addEventListener("click", e => {
+      if (e.target.closest("#reset-btn")) return resetToUnique();
+      const dl = e.target.closest("#docx-btn");
+      if (dl) return downloadPaper(dl);
+      const btn = e.target.closest("[data-group-idx]");
+      if (!btn) return;
+      const nums = groupMembers(btn.dataset.type, Number(btn.dataset.groupIdx));
+      const on = !nums.every(n => SELECTED.has(n));
+      setPicked(nums, on);
+      toast(on ? `Added ${nums.length} question${nums.length === 1 ? "" : "s"} to the paper` : "Removed from the paper");
+    });
+
+    /* ── Loading ── */
+    const LOADING_LINES = [
+      "Reading the paper", "Comparing questions", "Checking meanings",
+      "Looking for pictures and tables", "Almost there",
+    ];
+    function showLoading() {
+      outEl.innerHTML = `<div class="card loading">
+        <div class="scan"><i></i></div>
+        <p class="loading-text" id="loading-text">${LOADING_LINES[0]}</p></div>`;
+      let k = 0;
+      clearInterval(loadingTimer);
+      loadingTimer = setInterval(() => {
+        k = (k + 1) % LOADING_LINES.length;
+        const el = document.getElementById("loading-text");
+        if (el) el.textContent = LOADING_LINES[k];
+      }, 1400);
+    }
+
+    /* ── Submit ── */
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      if (!PENDING.length) return;
+      statusEl.innerHTML = "";
+      showLoading();
+      runBtn.disabled = true;
+
+      const body = new FormData();
+      for (const f of PENDING) body.append("files", f);
+      try {
+        const res = await fetch("/analyze", { method: "POST", body });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Could not analyze the file.");
+        DATA = data;
+        SELECTED.clear();
+        defaultPaperNumbers().forEach(n => SELECTED.add(n));
+        clearInterval(loadingTimer);
+        render();
+      } catch (err) {
+        clearInterval(loadingTimer);
+        outEl.innerHTML = "";
+        statusEl.innerHTML = `<div class="err">${esc(err.message)}</div>`;
+      } finally {
+        runBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+
+</html>
